@@ -295,3 +295,4 @@ curl -X POST http://localhost:8888/api/passport/web/email/register/v2/ \
 
 
 ### Configure Plugin
+- [Plugin Configuration](https://github.com/coze-dev/coze-studio/wiki/4.-Plugin-Configuration)
