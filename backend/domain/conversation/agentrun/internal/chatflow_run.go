@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"fmt"
 	"strconv"
 	"strings"
 	"sync"
@@ -72,11 +73,17 @@ func (art *AgentRuntime) ChatflowRun(ctx context.Context, imagex imagex.ImageX) 
 			ExecuteID:  resumeInfo.ChatflowInterrupt.ExecuteID,
 		}, executeConfig)
 	} else {
+		// Convert input message to schema format with bounds checking
+		inputMessages := transMessageToSchemaMessage(ctx, []*msgEntity.Message{art.GetInput()}, imagex)
+		if len(inputMessages) == 0 {
+			return fmt.Errorf("input message is empty or invalid after transformation")
+		}
+
 		executeConfig.ConversationID = &art.GetRunMeta().ConversationID
 		executeConfig.SectionID = &art.GetRunMeta().SectionID
 		executeConfig.InitRoundID = &art.RunRecord.ID
 		executeConfig.RoundID = &art.RunRecord.ID
-		executeConfig.UserMessage = transMessageToSchemaMessage(ctx, []*msgEntity.Message{art.GetInput()}, imagex)[0]
+		executeConfig.UserMessage = inputMessages[0]
 		executeConfig.MaxHistoryRounds = ptr.Of(getAgentHistoryRounds(art.GetAgentInfo()))
 		wfStreamer, err = crossworkflow.DefaultSVC().StreamExecute(ctx, executeConfig, map[string]any{
 			"USER_INPUT": concatWfInput(art),

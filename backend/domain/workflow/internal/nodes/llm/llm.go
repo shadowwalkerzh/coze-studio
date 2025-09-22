@@ -880,6 +880,7 @@ type LLM struct {
 	chatHistorySetting *vo.ChatHistorySetting
 	nodeKey            vo.NodeKey
 	outputKey          string
+	model              *modelmgr.Model
 }
 
 const (
@@ -1144,6 +1145,14 @@ func (l *LLM) handleInterrupt(ctx context.Context, err error, resumingEvent *ent
 }
 
 func (l *LLM) Invoke(ctx context.Context, in map[string]any, opts ...nodes.NodeOption) (out map[string]any, err error) {
+	// 记录模型配置信息
+	if l.model != nil && l.model.Meta.ConnConfig != nil {
+		modelConfig := l.model.Meta.ConnConfig
+		logs.CtxInfof(ctx, "[LLM Node] Using model - Protocol: %s, Model: %s, BaseURL: %s", 
+			l.model.Meta.Protocol, modelConfig.Model, modelConfig.BaseURL)
+	}
+
+	logs.CtxInfof(ctx, "Invoke START")
 	composeOpts, resumingEvent, err := l.prepare(ctx, in, opts...)
 	if err != nil {
 		return nil, err

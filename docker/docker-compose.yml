@@ -383,10 +383,11 @@ services:
       - coze-network
 
   coze-server:
-    # build:
-    #   context: ../
-    #   dockerfile: backend/Dockerfile
-    image: cozedev/coze-studio-server:latest
+    build:
+      context: ../
+      dockerfile: backend/Dockerfile
+    # image: cozedev/coze-studio-server:latest
+    image: cozedev/coze-studio-server:custom-1.0.0
     restart: always
     container_name: coze-server
     env_file: *env_file
@@ -396,11 +397,10 @@ services:
       - coze-network
     # ports:
     #   - '8888'
-    #   - '8889'
     volumes:
       - .env:/app/.env
       - ../backend/conf:/app/resources/conf
-      # - ../backend/static:/app/resources/static
+      - ../backend/static:/app/resources/static
     depends_on:
       mysql:
         condition: service_healthy

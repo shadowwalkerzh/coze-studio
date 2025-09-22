@@ -19,10 +19,13 @@ package agentflow
 import (
 	"context"
 	"encoding/json"
+	"strings"
 
 	"github.com/google/uuid"
-
+	
+	"github.com/cloudwego/eino/compose"
 	"github.com/cloudwego/eino/schema"
+	"github.com/coze-dev/coze-studio/backend/pkg/lang/conv"
 
 	"github.com/coze-dev/coze-studio/backend/api/model/crossdomain/agentrun"
 	"github.com/coze-dev/coze-studio/backend/api/model/crossdomain/plugin"
@@ -77,7 +80,10 @@ func (pr *toolPreCallConf) toolPreRetrieve(ctx context.Context, ar *AgentRequest
 				}),
 			}
 			execResp, err := crossplugin.DefaultSVC().ExecuteTool(ctx, etr, opts...)
+			logs.CtxInfof(ctx, "tool pre call plugin resp: %v, err: %v", conv.DebugJsonToStr(execResp), err)
+			
 			if err != nil {
+				logs.CtxErrorf(ctx, "Failed to call ToolTypePlugin nodes: %v", err)
 				return nil, err
 			}
 			toolResp = execResp.TrimmedResp
@@ -104,7 +110,14 @@ func (pr *toolPreCallConf) toolPreRetrieve(ctx context.Context, ar *AgentRequest
 				}(),
 			}, input)
 
+			logs.CtxInfof(ctx, "tool pre call workflow resp: %v, err: %v", conv.DebugJsonToStr(execResp), err)
+			
 			if err != nil {
+				// 检查是否是中断错误 - 这种情况说明工作流需要交互但我们没有提前检测到
+				if pr.isWorkflowInterruptError(err) {
+					logs.CtxInfof(ctx, "Workflow %d interrupted during execution (contains undetected interactive nodes), skipping", item.PluginID)
+					continue
+				}
 				return nil, err
 			}
 			toolResp = ptr.From(execResp.Output)
@@ -112,7 +125,8 @@ func (pr *toolPreCallConf) toolPreRetrieve(ctx context.Context, ar *AgentRequest
 
 		if toolResp != "" {
 			uID := uuid.New()
-			toolCallID := "call_" + uID.String()
+			// 去掉UUID中的破折号以符合OpenAI API 40字符限制 (call_ + 32字符UUID = 37字符)
+			toolCallID := "call_" + strings.ReplaceAll(uID.String(), "-", "")
 			tms = append(tms, &schema.Message{
 				Role: schema.Assistant,
 				ToolCalls: []schema.ToolCall{
@@ -136,4 +150,36 @@ func (pr *toolPreCallConf) toolPreRetrieve(ctx context.Context, ar *AgentRequest
 	}
 
 	return tms, nil
+}
+
+// isWorkflowInterruptError 检查错误是否为工作流中断错误
+func (pr *toolPreCallConf) isWorkflowInterruptError(err error) bool {
+	if err == nil {
+		return false
+	}
+	
+	// 检查是否是 Eino 的中断错误
+	_, isInterruptErr := compose.ExtractInterruptInfo(err)
+	if isInterruptErr {
+		return true
+	}
+	
+	// 检查错误消息中是否包含中断相关的关键词
+	errMsg := err.Error()
+	interruptKeywords := []string{
+		"interrupt",
+		"InterruptEvent",
+		"interrupt and rerun",
+		"NewInterruptAndRerunErr",
+		"InputReceiver", // 特别检查 InputReceiver 相关的错误
+		"QuestionAnswer", // 特别检查 QuestionAnswer 相关的错误
+	}
+	
+	for _, keyword := range interruptKeywords {
+		if strings.Contains(errMsg, keyword) {
+			return true
+		}
+	}
+	
+	return false
 }

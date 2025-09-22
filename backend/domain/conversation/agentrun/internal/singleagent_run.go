@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"fmt"
 	"sync"
 
 	"github.com/cloudwego/eino/schema"
@@ -43,6 +44,12 @@ import (
 func (art *AgentRuntime) AgentStreamExecute(ctx context.Context, imagex imagex.ImageX) (err error) {
 	mainChan := make(chan *entity.AgentRespEvent, 100)
 
+	// Convert input message to schema format with bounds checking
+	inputMessages := transMessageToSchemaMessage(ctx, []*msgEntity.Message{art.GetInput()}, imagex)
+	if len(inputMessages) == 0 {
+		return fmt.Errorf("input message is empty or invalid after transformation")
+	}
+
 	ar := &crossagent.AgentRuntime{
 		AgentVersion:     art.GetRunMeta().Version,
 		SpaceID:          art.GetRunMeta().SpaceID,
@@ -51,7 +58,7 @@ func (art *AgentRuntime) AgentStreamExecute(ctx context.Context, imagex imagex.I
 		UserID:           art.GetRunMeta().UserID,
 		ConnectorID:      art.GetRunMeta().ConnectorID,
 		PreRetrieveTools: art.GetRunMeta().PreRetrieveTools,
-		Input:            transMessageToSchemaMessage(ctx, []*msgEntity.Message{art.GetInput()}, imagex)[0],
+		Input:            inputMessages[0],
 		HistoryMsg:       transMessageToSchemaMessage(ctx, historyPairs(art.GetHistory()), imagex),
 		ResumeInfo:       parseResumeInfo(ctx, art.GetHistory()),
 	}

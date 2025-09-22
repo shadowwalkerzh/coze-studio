@@ -1251,6 +1251,7 @@ func (t *ToolHandler) OnStart(ctx context.Context, info *callbacks.RunInfo,
 
 	if len(callID) == 0 {
 		callID = compose.GetToolCallID(ctx)
+		logs.CtxInfof(ctx, "callback OnStart callId: %s", callID)
 	}
 
 	t.ch <- &Event{
@@ -1286,6 +1287,7 @@ func (t *ToolHandler) OnEnd(ctx context.Context, info *callbacks.RunInfo,
 
 	if len(callID) == 0 {
 		callID = compose.GetToolCallID(ctx)
+		logs.CtxInfof(ctx, "callback OnEnd callId: %s", callID)
 	}
 
 	t.ch <- &Event{

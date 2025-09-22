@@ -19,7 +19,10 @@ package chatmodel
 import (
 	"context"
 	"fmt"
+	"os"
 
+	"github.com/cloudwego/eino/components/model"
+	"github.com/cloudwego/eino/schema"
 	"github.com/cloudwego/eino-ext/components/model/ark"
 	"github.com/cloudwego/eino-ext/components/model/claude"
 	"github.com/cloudwego/eino-ext/components/model/deepseek"
@@ -28,11 +31,12 @@ import (
 	"github.com/cloudwego/eino-ext/components/model/openai"
 	"github.com/cloudwego/eino-ext/components/model/qwen"
 	"github.com/ollama/ollama/api"
-	"github.com/volcengine/volcengine-go-sdk/service/arkruntime/model"
+	arkmodel "github.com/volcengine/volcengine-go-sdk/service/arkruntime/model"
 	"google.golang.org/genai"
 
 	"github.com/coze-dev/coze-studio/backend/infra/contract/chatmodel"
 	"github.com/coze-dev/coze-studio/backend/pkg/lang/ptr"
+	"github.com/coze-dev/coze-studio/backend/pkg/logs"
 )
 
 type Builder func(ctx context.Context, config *chatmodel.Config) (chatmodel.ToolCallingChatModel, error)
@@ -74,7 +78,19 @@ func (f *defaultFactory) CreateChatModel(ctx context.Context, protocol chatmodel
 		return nil, fmt.Errorf("[CreateChatModel] protocol not support, protocol=%s", protocol)
 	}
 
-	return builder(ctx, config)
+	// 记录模型创建日志，包含 BaseURL
+	logs.CtxInfof(ctx, "[Model Factory] Creating model - Protocol: %s, Model: %s, BaseURL: %s", protocol, config.Model, config.BaseURL)
+
+	model, err := builder(ctx, config)
+	if err != nil {
+		logs.CtxErrorf(ctx, "[Model Factory] Failed to create model - Protocol: %s, Model: %s, BaseURL: %s, Error: %v", protocol, config.Model, config.BaseURL, err)
+		return nil, err
+	}
+
+	logs.CtxInfof(ctx, "[Model Factory] Successfully created model - Protocol: %s, Model: %s, BaseURL: %s", protocol, config.Model, config.BaseURL)
+
+	// 返回带有日志功能的包装模型，包含 baseURL
+	return newLoggedModelWrapper(model, protocol, config.Model, config.BaseURL), nil
 }
 
 func (f *defaultFactory) SupportProtocol(protocol chatmodel.Protocol) bool {
@@ -191,15 +207,15 @@ func arkBuilder(ctx context.Context, config *chatmodel.Config) (chatmodel.ToolCa
 	}
 
 	if config.EnableThinking != nil {
-		cfg.Thinking = func() *model.Thinking {
-			var arkThinkingType model.ThinkingType
+		cfg.Thinking = func() *arkmodel.Thinking {
+			var arkThinkingType arkmodel.ThinkingType
 			switch {
 			case ptr.From(config.EnableThinking):
-				arkThinkingType = model.ThinkingTypeEnabled
+				arkThinkingType = arkmodel.ThinkingTypeEnabled
 			default:
-				arkThinkingType = model.ThinkingTypeDisabled
+				arkThinkingType = arkmodel.ThinkingTypeDisabled
 			}
-			return &model.Thinking{
+			return &arkmodel.Thinking{
 				Type: arkThinkingType,
 			}
 		}()
@@ -297,4 +313,67 @@ func geminiBuilder(ctx context.Context, config *chatmodel.Config) (chatmodel.Too
 	}
 
 	return cm, nil
+}
+
+// loggedModelWrapper 包装模型以添加调用日志
+type loggedModelWrapper struct {
+	chatmodel.ToolCallingChatModel
+	protocol chatmodel.Protocol
+	modelName string
+	baseURL  string  // 新增字段
+}
+
+func newLoggedModelWrapper(model chatmodel.ToolCallingChatModel, protocol chatmodel.Protocol, modelName, baseURL string) chatmodel.ToolCallingChatModel {
+	return &loggedModelWrapper{
+		ToolCallingChatModel: model,
+		protocol:             protocol,
+		modelName:           modelName,
+		baseURL:            baseURL,
+	}
+}
+
+func (w *loggedModelWrapper) Generate(ctx context.Context, input []*schema.Message, opts ...model.Option) (output *schema.Message, err error) {
+	logs.CtxInfof(ctx, "[Model Call] Generate START - Protocol: %s, Model: %s", w.protocol, w.modelName)
+	
+	defer func() {
+		if err != nil {
+			logs.CtxErrorf(ctx, "[Model Call] Generate FAILED - Protocol: %s, Model: %s, Error: %v", w.protocol, w.modelName, err)
+		} else {
+			logs.CtxInfof(ctx, "[Model Call] Generate SUCCESS - Protocol: %s, Model: %s", w.protocol, w.modelName)
+		}
+	}()
+
+	return w.ToolCallingChatModel.Generate(ctx, input, opts...)
+}
+
+func (w *loggedModelWrapper) Stream(ctx context.Context, input []*schema.Message, opts ...model.Option) (output *schema.StreamReader[*schema.Message], err error) {
+	// 基础日志
+	logs.CtxInfof(ctx, "[Model Call] Stream START - Protocol: %s, Model: %s, BaseURL: %s", w.protocol, w.modelName, w.baseURL)
+	
+	// 详细日志（可通过环境变量控制）
+	if os.Getenv("ENABLE_DETAILED_MODEL_LOGS") == "true" {
+		logs.CtxInfof(ctx, "[Model Call] Detailed Info - BaseURL: %s, Input Messages: %d", w.baseURL, len(input))
+		// 可以添加更多详细信息，如请求头、参数等
+	}
+	
+	defer func() {
+		if err != nil {
+			logs.CtxErrorf(ctx, "[Model Call] Stream FAILED - Protocol: %s, Model: %s, BaseURL: %s, Error: %v", w.protocol, w.modelName, w.baseURL, err)
+			if os.Getenv("ENABLE_DETAILED_MODEL_LOGS") == "true" {
+				logs.CtxErrorf(ctx, "[Model Call] Failed BaseURL: %s", w.baseURL)
+			}
+		} else {
+			logs.CtxInfof(ctx, "[Model Call] Stream SUCCESS - Protocol: %s, Model: %s, BaseURL: %s", w.protocol, w.modelName, w.baseURL)
+		}
+	}()
+
+	return w.ToolCallingChatModel.Stream(ctx, input, opts...)
+}
+
+func (w *loggedModelWrapper) WithTools(tools []*schema.ToolInfo) (model.ToolCallingChatModel, error) {
+	wrappedModel, err := w.ToolCallingChatModel.WithTools(tools)
+	if err != nil {
+		return nil, err
+	}
+	return newLoggedModelWrapper(wrappedModel.(chatmodel.ToolCallingChatModel), w.protocol, w.modelName, w.baseURL), nil
 }

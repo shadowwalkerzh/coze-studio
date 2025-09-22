@@ -1098,6 +1098,11 @@ func (t *toolExecutor) processWithInvalidRespProcessStrategyOfReturnRaw(ctx cont
 func (t *toolExecutor) processWithInvalidRespProcessStrategyOfReturnErr(_ context.Context, paramVals map[string]any, paramSchema *openapi3.Schema) (map[string]any, error) {
 	var processor func(paramName string, paramVal any, schemaVal *openapi3.Schema) (any, error)
 	processor = func(paramName string, paramVal any, schemaVal *openapi3.Schema) (any, error) {
+		// Handle null values for all types - allow null to pass through
+		if paramVal == nil {
+			return nil, nil
+		}
+
 		switch schemaVal.Type {
 		case openapi3.TypeObject:
 			paramValMap, ok := paramVal.(map[string]any)
@@ -1109,7 +1114,7 @@ func (t *toolExecutor) processWithInvalidRespProcessStrategyOfReturnErr(_ contex
 			newParamValMap := map[string]any{}
 			for paramName_, paramVal_ := range paramValMap {
 				paramSchema_, ok := schemaVal.Properties[paramName_]
-				if !ok || t.disabledParam(paramSchema_.Value) { // Only the object field can be disabled, and the top level of request and response must be the object structure
+				if !ok || t.disabledParam(paramSchema_.Value) {
 					continue
 				}
 				newParamVal, err := processor(paramName_, paramVal_, paramSchema_.Value)
@@ -1134,9 +1139,8 @@ func (t *toolExecutor) processWithInvalidRespProcessStrategyOfReturnErr(_ contex
 				if err != nil {
 					return nil, err
 				}
-				if newParamVal != nil {
-					newParamValSlice = append(newParamValSlice, newParamVal)
-				}
+				// Keep null values in array
+				newParamValSlice = append(newParamValSlice, newParamVal)
 			}
 
 			return newParamValSlice, nil
