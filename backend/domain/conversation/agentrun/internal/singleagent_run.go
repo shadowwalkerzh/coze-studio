@@ -49,6 +49,7 @@ func (art *AgentRuntime) AgentStreamExecute(ctx context.Context, imagex imagex.I
 		AgentID:          art.GetRunMeta().AgentID,
 		IsDraft:          art.GetRunMeta().IsDraft,
 		UserID:           art.GetRunMeta().UserID,
+		ConversationId:   art.GetRunMeta().ConversationID,
 		ConnectorID:      art.GetRunMeta().ConnectorID,
 		PreRetrieveTools: art.GetRunMeta().PreRetrieveTools,
 		Input:            transMessageToSchemaMessage(ctx, []*msgEntity.Message{art.GetInput()}, imagex)[0],
@@ -80,7 +81,7 @@ func (art *AgentRuntime) AgentStreamExecute(ctx context.Context, imagex imagex.I
 
 func (art *AgentRuntime) push(ctx context.Context, mainChan chan *entity.AgentRespEvent) {
 
-	mh := &MesssageEventHanlder{
+	mh := &MessageEventHandler{
 		sw:           art.SW,
 		messageEvent: art.MessageEvent,
 	}
