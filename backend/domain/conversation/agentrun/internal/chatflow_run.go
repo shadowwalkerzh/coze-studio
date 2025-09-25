@@ -42,7 +42,7 @@ import (
 
 func (art *AgentRuntime) ChatflowRun(ctx context.Context, imagex imagex.ImageX) (err error) {
 
-	mh := &MesssageEventHanlder{
+	mh := &MessageEventHandler{
 		sw:           art.SW,
 		messageEvent: art.MessageEvent,
 	}
@@ -117,7 +117,7 @@ func concatWfInput(rtDependence *AgentRuntime) string {
 	return strings.Trim(input, ",")
 }
 
-func (art *AgentRuntime) pullWfStream(ctx context.Context, events *schema.StreamReader[*crossworkflow.WorkflowMessage], mh *MesssageEventHanlder) {
+func (art *AgentRuntime) pullWfStream(ctx context.Context, events *schema.StreamReader[*crossworkflow.WorkflowMessage], mh *MessageEventHandler) {
 
 	fullAnswerContent := bytes.NewBuffer([]byte{})
 	var usage *msgEntity.UsageExt
