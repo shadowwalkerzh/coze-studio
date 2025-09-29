@@ -104,12 +104,14 @@ func openAIBuilder(ctx context.Context, config *chatmodel.Config) (chatmodel.Too
 		Timeout:          config.Timeout,
 		BaseURL:          config.BaseURL,
 		Model:            config.Model,
-		MaxTokens:        config.MaxTokens,
 		Temperature:      config.Temperature,
 		TopP:             config.TopP,
 		Stop:             config.Stop,
 		PresencePenalty:  config.PresencePenalty,
 		FrequencyPenalty: config.FrequencyPenalty,
+	}
+	if config.MaxTokens != nil {
+		cfg.MaxTokens = config.MaxTokens
 	}
 	if config.MaxCompletionTokens != nil {
 		cfg.MaxCompletionTokens = config.MaxCompletionTokens
@@ -337,7 +339,7 @@ func newLoggedModelWrapper(model chatmodel.ToolCallingChatModel, protocol chatmo
 
 func (w *loggedModelWrapper) Generate(ctx context.Context, input []*schema.Message, opts ...model.Option) (output *schema.Message, err error) {
 	logs.CtxInfof(ctx, "[Model Call] Generate START - Protocol: %s, Model: %s", w.protocol, w.modelName)
-	
+
 	defer func() {
 		if err != nil {
 			logs.CtxErrorf(ctx, "[Model Call] Generate FAILED - Protocol: %s, Model: %s, Error: %v", w.protocol, w.modelName, err)
@@ -352,13 +354,13 @@ func (w *loggedModelWrapper) Generate(ctx context.Context, input []*schema.Messa
 func (w *loggedModelWrapper) Stream(ctx context.Context, input []*schema.Message, opts ...model.Option) (output *schema.StreamReader[*schema.Message], err error) {
 	// 基础日志
 	logs.CtxInfof(ctx, "[Model Call] Stream START - Protocol: %s, Model: %s, BaseURL: %s", w.protocol, w.modelName, w.baseURL)
-	
+
 	// 详细日志（可通过环境变量控制）
 	if os.Getenv("ENABLE_DETAILED_MODEL_LOGS") == "true" {
 		logs.CtxInfof(ctx, "[Model Call] Detailed Info - BaseURL: %s, Input Messages: %d", w.baseURL, len(input))
 		// 可以添加更多详细信息，如请求头、参数等
 	}
-	
+
 	defer func() {
 		if err != nil {
 			logs.CtxErrorf(ctx, "[Model Call] Stream FAILED - Protocol: %s, Model: %s, BaseURL: %s, Error: %v", w.protocol, w.modelName, w.baseURL, err)
